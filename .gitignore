@@ -2,3 +2,9 @@ bin/
 maps/
 moon/
 obj/
+
+*.dll
+*.o
+*.exe
+*.lib
+
