@@ -15,9 +15,9 @@
  *  * -1     Couldn't open file
  *  * -2     Couldn't write width/height to file
  *  * -3     Couldn't write map data to file
- *  * -4     Couldn't close file
+ *  * -15    Couldn't close file
  **************************************************************************/
-int export_file(std::string name, char *map, uint16_t w, uint16_t h) {
+int export_file(std::string name, char *map, uint16_t w, uint16_t h) { 
     if (name.find('.') == std::string::npos) name.append(".map");
     name = "maps/" + name;
     FILE *file = fopen(name.c_str(), "wb");
@@ -31,7 +31,7 @@ int export_file(std::string name, char *map, uint16_t w, uint16_t h) {
     if (!fwrite(map, 1, w*h, file)) return -3;
 
     // Close the file
-    if (fclose(file) != 0) return -4;
+    if (fclose(file) != 0) return -15;
 
 	return 1;
 }
@@ -43,15 +43,15 @@ int export_file(std::string name, char *map, uint16_t w, uint16_t h) {
  * Parameters:
  *  * in std::string filename      The filename to import from.
  *  * out char *map                The map data to import into.
- *  * out uint16_t w               16-bit short for the width of the map.
- *  * out uint16_t h               16-bit short for the height of the map.
+ *  * out uint16_t *w              16-bit short for the width of the map.
+ *  * out uint16_t *h              16-bit short for the height of the map.
  ****************************************************************************
  * Returns: A success value:
  *  *  1     No errors occured
  *  * -1     Couldn't open file
  *  * -2     Couldn't read width/height from file
  *  * -3     Couldn't read map data from file
- *  * -4     Couldn't close file
+ *  * -15    Couldn't close file
  ****************************************************************************/
 int import_file(std::string name, char *map, uint16_t *w, uint16_t *h) {
     if (name.find('.') == std::string::npos) name.append(".map");
@@ -68,7 +68,7 @@ int import_file(std::string name, char *map, uint16_t *w, uint16_t *h) {
     if (!fread(map, 1, x*y, file)) return -3;
 
     // Close the file
-    if (fclose(file) != 0) return -4;
+    if (fclose(file) != 0) return -15;
 
 	return 1;
 }
