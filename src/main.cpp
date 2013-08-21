@@ -6,10 +6,21 @@
 # include <Windows.h>
 #endif
 #include <SDL/SDL.h>
-#include <SDL_mixer.h>
+#include <SDL/SDL_mixer.h>
 
 #define CTRL_PRESSED SDL_GetModState() & KMOD_LCTRL
 #define bit bool
+
+#include "io.h"
+
+void msg(std::string message, std::string title) {
+#if defined __WIN32__
+	MessageBox(NULL, message.c_str(), title.c_str());
+#elif defined __linux__
+	// TODO Show a graphical error
+	printf("%s: %s", title.c_str(), message.c_str());
+#endif
+}
 
 void error(int error, std::string message) {
 #if defined __WIN32__
@@ -50,80 +61,11 @@ void draw_string(std::string text, int x, int y, SDL_Surface *txt, SDL_Surface *
     }
 }
 
-/* int export_file(std::string filename, char *map, uint16_t w, uint16_t h)
- **************************************************************************
- * Exports the map data to file.
- **************************************************************************
- * Parameters:
- *  * in std::string filename      The filename to export to.
- *  * in char *map                 The map data to export.
- *  * in uint16_t w                16-bit short with the width of the map.
- *  * in uint16_t h                16-bit short with the height of the map.
- **************************************************************************
- * Returns: A success value:
- *  *  1     No errors occured
- *  * -1     Couldn't open file
- *  * -2     Couldn't write width/height to file
- *  * -3     Couldn't write map data to file
- *  * -4     Couldn't close file
- **************************************************************************/
-int export_file(std::string name, char *map, uint16_t w, uint16_t h) {
-    if (name.find('.') == std::string::npos) name.append(".map");
-    name = "maps/" + name;
-    FILE *file = fopen(name.c_str(), "wb");
-    if (!file) return -1;
-
-    // Write the dimensions
-    if (!fwrite(&w, sizeof(uint16_t), 1, file)) return -2;
-    if (!fwrite(&h, sizeof(uint16_t), 1, file)) return -2;
-
-    // Write the map data
-    if (!fwrite(map, 1, w*h, file)) return -3;
-
-    // Close the file
-    if (fclose(file) != 0) return -4;
-}
-
-/* int import_file(std::string filename, char *map, uint16_t *w, uint16_t *h)
- ****************************************************************************
- * Exports the map data to file.
- ****************************************************************************
- * Parameters:
- *  * in std::string filename      The filename to import from.
- *  * out char *map                The map data to import into.
- *  * out uint16_t w               16-bit short for the width of the map.
- *  * out uint16_t h               16-bit short for the height of the map.
- ****************************************************************************
- * Returns: A success value:
- *  *  1     No errors occured
- *  * -1     Couldn't open file
- *  * -2     Couldn't read width/height from file
- *  * -3     Couldn't read map data from file
- *  * -4     Couldn't close file
- ****************************************************************************/
-int import_file(std::string name, char *map, uint16_t *w, uint16_t *h) {
-    if (name.find('.') == std::string::npos) name.append(".map");
-    name = "maps/" + name;
-    FILE *file = fopen(name.c_str(), "rb");
-    if (!file) return -1;
-
-    // Read the dimensions
-    if (!fread(w, sizeof(uint16_t), 1, file)) return -2;
-    if (!fread(h, sizeof(uint16_t), 1, file)) return -2;
-
-    // Read the map data
-    uint16_t x = *w, y = *h;
-    if (!fread(map, 1, x*y, file)) return -3;
-
-    // Close the file
-    if (fclose(file) != 0) return -4;
-}
-
 int main(int argc, char** argv) {
     if (SDL_Init(SDL_INIT_EVERYTHING) < 0)
         error(1, std::string("Unable to initialize SDL - ") + SDL_GetError());
 
-    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 4096) < 0)
+    if (Mix_OpenAudio(48000, MIX_DEFAULT_FORMAT, 2, 4096) < 0)
         error(4, std::string("Unable to initialize SDL_mixer - ") + SDL_GetError());
 
     // Make sure SDL cleans up before exit
@@ -177,68 +119,75 @@ int main(int argc, char** argv) {
                 break;
 
             case SDL_KEYDOWN:
-                if (event.key.keysym.sym >= SDLK_a && event.key.keysym.sym <= SDLK_z) {
-                    if (mapeditor_show && mapeditor_filedialog_show) {
-                        mapeditor_filedialog_filename += event.key.keysym.sym + ((event.key.keysym.mod & KMOD_SHIFT) ? -32 : 0);
-                    }
-                }
+				// TODO Clean this up
+				if (CTRL_PRESSED) {
+					switch (event.key.keysym.sym) {
+					case SDLK_q:
+						done = true;	// Ctrl+Q quits the game
+						break;
 
-                if (event.key.keysym.sym == SDLK_ESCAPE) {
-                    // TODO:Escape goes to the menu
-                } else if (event.key.keysym.sym == SDLK_q) {
-                    if (CTRL_PRESSED) done = true; // Control+Q quits the game
-                } else if (event.key.keysym.sym == SDLK_e) {
-                    if (CTRL_PRESSED) mapeditor_show = !mapeditor_show; // Control+E toggles the map editor
-                } else if (event.key.keysym.sym == SDLK_s) {
-                    if (mapeditor_show && !mapeditor_filedialog_show) {
-                        // If the mapeditor is up and the filedialog isn't, open a save dialog
-                        mapeditor_filedialog_type = 1;
-                        mapeditor_filedialog_show = true;
-                    }
-                } else if (event.key.keysym.sym == SDLK_o) {
-                    if (mapeditor_show && !mapeditor_filedialog_show) {
-                        // If the mapeditor is up and the filedialog isn't, open an open dialog
-                        mapeditor_filedialog_type = 0;
-                        mapeditor_filedialog_show = true;
-                    }
-                } else if (event.key.keysym.sym == SDLK_RIGHT | event.key.keysym.sym == SDLK_LEFT) {
-                    if (mapeditor_show && mapeditor_filedialog_show) {
-                        mapeditor_filedialog_selected = !mapeditor_filedialog_selected;
-                    }
-                } else if (event.key.keysym.sym == SDLK_BACKSPACE) {
-                    if (mapeditor_show && mapeditor_filedialog_show) {
-                        if (mapeditor_filedialog_filename.size() > 0)
-                            mapeditor_filedialog_filename.pop_back();
-                    }
-                } else if (event.key.keysym.sym == SDLK_SPACE) {
-                    if (mapeditor_show && mapeditor_filedialog_show) {
-                        mapeditor_filedialog_filename += ' ';
-                    }
-                } else if (event.key.keysym.sym == SDLK_RETURN) {
-                    if (mapeditor_show && mapeditor_filedialog_show) {
-                        if (mapeditor_filedialog_selected == 0) {
-                            if (mapeditor_filedialog_type == 1) {
-                                int i;
-                                if ((i = export_file(mapeditor_filedialog_filename, tiles, tiles_w, tiles_h)) < 0) {
-                                    char s[32]; sprintf(s, "Error %d", i);
-                                    MessageBox(NULL, s, "Error", MB_ICONERROR);
-                                } else {
-                                    mapeditor_filedialog_show = false;
-                                }
-                            } else {
-                                int i;
-                                if ((i = import_file(mapeditor_filedialog_filename, tiles, &tiles_w, &tiles_h)) < 0) {
-                                    char s[32]; sprintf(s, "Error %d", i);
-                                    MessageBox(NULL, s, "Error", MB_ICONERROR);
-                                } else {
-                                    mapeditor_filedialog_show = false;
-                                }
-                            }
-                        } else {
-                            mapeditor_filedialog_show = false;
-                        }
-                    }
-                }
+					case SDLK_e:
+						mapeditor_show = !mapeditor_show;	// Ctrl+E toggles the map editor
+						break;
+					}
+				}
+
+				if (mapeditor_show) {
+					if (mapeditor_filedialog_show) {
+						// If both mapeditor and filedialog are up
+						switch (event.key.keysym.sym) {
+						case SDLK_RIGHT:
+						case SDLK_LEFT:
+							mapeditor_filedialog_selected = !mapeditor_filedialog_selected;
+							break;
+
+						case SDLK_BACKSPACE:
+							// Remove the last character from the filename
+							if (mapeditor_filedialog_filename.size() > 0)
+								mapeditor_filedialog_filename.pop_back();
+							break;
+
+						case SDLK_SPACE:
+							// Add a space to the filename
+							mapeditor_filedialog_filename += ' ';
+							break;
+
+						case SDLK_RETURN:
+							if (mapeditor_filedialog_selected == 0) {	// If the save/load button is selected
+								int i;
+								if (mapeditor_filedialog_type == 1) {		// If it's a save dialog
+									if ((i = export_file(mapeditor_filedialog_filename, tiles, tiles_w, tiles_h)) < 0)
+										msg("Couldn't export: Error " + i, "Error");
+									else
+										mapeditor_filedialog_show = false;
+								} else {									// If it's a load dialog
+									if ((i = import_file(mapeditor_filedialog_filename, tiles, &tiles_w, &tiles_h)) < 0)
+										msg("Couldn't import: error " + i, "Error");
+									else
+										mapeditor_filedialog_show = false;
+								}
+							} else {									// If the cancel button is selected
+								mapeditor_filedialog_show = false;			// Just close the dialog
+							}
+						}
+						
+						if ((event.key.keysym.sym >= SDLK_a) && (event.key.keysym.sym <= SDLK_z))
+							mapeditor_filedialog_filename += event.key.keysym.sym + ((event.key.keysym.mod & KMOD_SHIFT) ? -32 : 0);
+					} else {
+						// If mapeditor is up and filedialog isn't
+						switch (event.key.keysym.sym) {
+						case SDLK_s:
+							mapeditor_filedialog_type = 1;
+							mapeditor_filedialog_show = true;
+							break;
+
+						case SDLK_o:
+							mapeditor_filedialog_type = 0;
+							mapeditor_filedialog_show = true;
+							break;
+						}
+					}
+				}
 
                 break;
 
@@ -333,6 +282,11 @@ int main(int argc, char** argv) {
             // Draw the player
             int target_x = ply_x + x_vel;
             int target_y = ply_y + y_vel;
+
+			// TODO:Collision detection
+
+			ply_x = target_x;
+			ply_y = target_y;
 
             draw_sprite(0, 0, ply_x * 3, ply_y * 3, 48, 72, s_sprites, screen);
 
