@@ -13,7 +13,7 @@
 #define CTRL_PRESSED SDL_GetModState() & KMOD_LCTRL
 #define bit bool
 
-#include "io.h"
+#include "io.hpp"
 #include "spritesheet.h"
 
 void msg(std::string message, std::string title) {
