@@ -4,6 +4,8 @@
 
 #if defined __WIN32__
 # include <Windows.h>
+#elif defined __unix__
+# include <unistd.h>
 #endif
 #include <SDL/SDL.h>
 #include <SDL/SDL_mixer.h>
@@ -12,6 +14,7 @@
 #define bit bool
 
 #include "io.h"
+#include "spritesheet.h"
 
 void msg(std::string message, std::string title) {
 #if defined __WIN32__
@@ -49,20 +52,6 @@ bool mapeditor_filedialog_type = 0; // 0 == Load, 1 == Save
 int mapeditor_camerax, mapeditor_cameray;
 std::string mapeditor_filedialog_filename = "";
 
-
-void draw_sprite(short srcx, short srcy, short dstx, short dsty, unsigned short w, unsigned short h, SDL_Surface *srcs, SDL_Surface *dsts) {
-	SDL_Rect src = { .x = srcx, .y = srcy, .w = w, .h = h };
-	SDL_Rect dst = { .x = dstx, .y = dsty };
-	SDL_BlitSurface(srcs, &src, dsts, &dst);
-}
-
-void draw_string(std::string text, int x, int y, SDL_Surface *txt, SDL_Surface *screen) {
-	for (int c : text) {
-		draw_sprite((c % 16) * 24, (c / 16) * 24, x, y, 24, 24, txt, screen);
-		x += 24;
-	}
-}
-
 int main(int argc, char** argv) {
 	if (SDL_Init(SDL_INIT_EVERYTHING) < 0)
 		error(1, std::string("Unable to initialize SDL - ") + SDL_GetError());
@@ -79,35 +68,11 @@ int main(int argc, char** argv) {
 		error(2, std::string("Unable to set 768x720 video - ") + SDL_GetError());
 
 	// Load the textures
-	SDL_Surface *tmp = SDL_LoadBMP("sprites/sprites.bmp");
-	if (!tmp) error(3, std::string("Couldn't load texture sprites.bmp"));
-	SDL_Surface *s_sprites = SDL_DisplayFormat(tmp); SDL_FreeSurface(tmp);
-	SDL_SetColorKey(s_sprites, SDL_SRCCOLORKEY, SDL_MapRGB(s_sprites->format, 0xFF, 0x00, 0xFF));
-
-	tmp = SDL_LoadBMP("sprites/map.bmp");
-	if (!tmp) error(3, std::string("Couldn't load texture map.bmp"));
-	SDL_Surface *s_map = SDL_DisplayFormat(tmp); SDL_FreeSurface(tmp);
-	SDL_SetColorKey(s_map, SDL_SRCCOLORKEY, SDL_MapRGB(s_map->format, 0xFF, 0x00, 0xFF));
-
-	tmp = SDL_LoadBMP("sprites/mapeditor.bmp");
-	if (!tmp) error(3, std::string("Couldn't load texture mapeditor.bmp"));
-	SDL_Surface *s_mapeditor = SDL_DisplayFormat(tmp); SDL_FreeSurface(tmp);
-	SDL_SetColorKey(s_mapeditor, SDL_SRCCOLORKEY, SDL_MapRGB(s_mapeditor->format, 0xFF, 0x00, 0xFF));
-
-	tmp = SDL_LoadBMP("sprites/gui.bmp");
-	if (!tmp) error(3, std::string("Couldn't load texture font.bmp"));
-	SDL_Surface *s_gui = SDL_DisplayFormat(tmp); SDL_FreeSurface(tmp);
-	SDL_SetColorKey(s_gui, SDL_SRCCOLORKEY, SDL_MapRGB(s_gui->format, 0xFF, 0x00, 0xFF));
-
-	tmp = SDL_LoadBMP("sprites/entities.bmp");
-	if (!tmp) error(3, std::string("Couldn't load texture entities.bmp"));
-	SDL_Surface *s_entities = SDL_DisplayFormat(tmp); SDL_FreeSurface(tmp);
-	SDL_SetColorKey(s_entities, SDL_SRCCOLORKEY, SDL_MapRGB(s_entities->format, 0xFF, 0x00, 0xFF));
-
-	Mix_Music *music = Mix_LoadMUS("music.wav");
-	if (music) {
-		Mix_PlayMusic(music, -1);
-	}
+	SpriteSheet ss_sprites("sprites/sprites.bmp");
+	SpriteSheet ss_map("sprites/map.bmp");
+	SpriteSheet ss_mapeditor("sprites/mapeditor.bmp");
+	SpriteSheet ss_gui("sprites/gui.bmp");
+	//auto s_entities  = load_texture("sprites/entities.bmp");
 
 	// Start the main loop
 	bool done = false;
@@ -115,7 +80,6 @@ int main(int argc, char** argv) {
 	{
 		int delta_ticks = SDL_GetTicks() - prev_ticks;
 		prev_ticks = SDL_GetTicks();
-		printf("Delta ticks: %d\n", delta_ticks);
 
 		SDL_Event event;
 		while (SDL_PollEvent(&event)) {
@@ -137,7 +101,7 @@ int main(int argc, char** argv) {
 					}
 				}
 
-				if (mapeditor_show) {
+				else if (mapeditor_show) {
 					if (mapeditor_filedialog_show) {
 						// If both mapeditor and filedialog are up
 						switch (event.key.keysym.sym) {
@@ -163,13 +127,19 @@ int main(int argc, char** argv) {
 								if (mapeditor_filedialog_type == 1) {		// If it's a save dialog
 									if ((i = export_file(mapeditor_filedialog_filename, tiles, tiles_w, tiles_h)) < 0)
 										msg("Couldn't export: Error " + i, "Error");
-									else
+									else {
 										mapeditor_filedialog_show = false;
+										ply_x = x_vel = 0;
+										ply_y = y_vel = 0;
+									}
 								} else {									// If it's a load dialog
 									if ((i = import_file(mapeditor_filedialog_filename, tiles, &tiles_w, &tiles_h)) < 0)
 										msg("Couldn't import: error " + i, "Error");
-									else
+									else {
 										mapeditor_filedialog_show = false;
+										ply_x = x_vel = 0;
+										ply_y = y_vel = 0;
+									}
 								}
 							} else {									// If the cancel button is selected
 								mapeditor_filedialog_show = false;			// Just close the dialog
@@ -248,12 +218,12 @@ int main(int argc, char** argv) {
 		SDL_FillRect(screen, 0, SDL_MapRGB(screen->format, 0, 0, 0));
 
 		if (mapeditor_show) {
-			draw_sprite(0, 96, 0, 0, 240, 24, s_map, screen);
+			ss_map.DrawSprite(0, 96, 0, 0, 240, 24, screen);
 
 			for (int j = 0; j < 256; j++) { // horizontal
 				for (int i = 0; i < 30; i++) { // vertical
 					int tile = tiles[i*256+j];
-					draw_sprite((tile % 16)*24, (tile / 16)*24, (j * 24) + mapeditor_camerax, (i * 24) + mapeditor_cameray, 24, 24, s_mapeditor, screen);
+					ss_mapeditor.DrawSprite(tile, (j * 24) + mapeditor_camerax, (i * 24) + mapeditor_cameray, 24, 24, screen);
 				}
 			}
 
@@ -263,20 +233,20 @@ int main(int argc, char** argv) {
 					tiles[(event.button.y-mapeditor_cameray)/24*256 + (event.button.x-mapeditor_camerax)/24] = mapeditor_selectedtile;
 				else if (state & SDL_BUTTON(SDL_BUTTON_RIGHT))
 					tiles[(event.button.y-mapeditor_cameray)/24*256 + (event.button.x-mapeditor_camerax)/24] = 0;
-				draw_sprite((mapeditor_selectedtile % 16)*24, (mapeditor_selectedtile / 16)*24, ((x-mapeditor_camerax) / 24 * 24) + mapeditor_camerax, ((y-mapeditor_cameray) / 24 * 24) + mapeditor_cameray, 24, 24, s_mapeditor, screen);
+				ss_mapeditor.DrawSprite(mapeditor_selectedtile, ((x - mapeditor_camerax) / 24 * 24) + mapeditor_camerax, ((y - mapeditor_cameray) / 24 * 24) + mapeditor_cameray, 24, 24, screen);
 			} else {
 				// Draw the background
-				draw_sprite(0,  0, 72, 312, 24, 24, s_gui, screen);
-				draw_sprite(24, 0, 672, 312, 24, 24, s_gui, screen);
-				draw_sprite(48, 0, 72, 408, 24, 24, s_gui, screen);
-				draw_sprite(72, 0, 672, 408, 24, 24, s_gui, screen);
+				ss_gui.DrawSprite(0,  0, 72,  312, 24, 24, screen);
+				ss_gui.DrawSprite(24, 0, 672, 312, 24, 24, screen);
+				ss_gui.DrawSprite(48, 0, 72,  408, 24, 24, screen);
+				ss_gui.DrawSprite(72, 0, 672, 408, 24, 24, screen);
 
 				for (int i = 96; i <= 648; i += 24)
 					for (int j = 312; j <= 408; j += 24)
-						draw_sprite(96, 0, i, j, 24, 24, s_gui, screen);
+						ss_gui.DrawSprite(96, 0, i, j, 24, 24, screen);
 				for (int i = 336; i <= 384; i += 24) {
-					draw_sprite(96, 0, 72, i, 24, 24, s_gui, screen);
-					draw_sprite(96, 0, 672, i, 24, 24, s_gui, screen);
+					ss_gui.DrawSprite(96, 0, 72,  i, 24, 24, screen);
+					ss_gui.DrawSprite(96, 0, 672, i, 24, 24, screen);
 				}
 
 				// Draw the button and textbox backgrounds
@@ -286,15 +256,15 @@ int main(int argc, char** argv) {
 					case 1: cancel_sprite = 120; tb_sprite = saveload_sprite = 144; break;
 				}
 
-				for (int i = 96;  i <= 648; i += 24) draw_sprite(tb_sprite, 0, i, 360, 24, 24, s_gui, screen);
-				for (int i = 120; i <= 240; i += 24) draw_sprite(saveload_sprite, 0, i, 408, 24, 24, s_gui, screen);
-				for (int i = 456; i <= 624; i += 24) draw_sprite(cancel_sprite, 0, i, 408, 24, 24, s_gui, screen);
+				for (int i = 96;  i <= 648; i += 24) ss_gui.DrawSprite(tb_sprite, 0, i, 360, 24, 24, screen);
+				for (int i = 120; i <= 240; i += 24) ss_gui.DrawSprite(saveload_sprite, 0, i, 408, 24, 24, screen);
+				for (int i = 456; i <= 624; i += 24) ss_gui.DrawSprite(cancel_sprite, 0, i, 408, 24, 24, screen);
 
 				// Draw the strings
-				draw_string("Enter map name", 216, 312, s_gui, screen);
-				draw_string(mapeditor_filedialog_type ? "Save" : "Load", 144, 408, s_gui, screen);
-				draw_string("Cancel", 480, 408, s_gui, screen);
-				draw_string(mapeditor_filedialog_filename, 120, 360, s_gui, screen);
+				ss_gui.DrawString("Enter map name", 216, 312, screen);
+				ss_gui.DrawString(mapeditor_filedialog_type ? "Save" : "Load", 144, 408, screen);
+				ss_gui.DrawString("Cancel", 480, 408, screen);
+				ss_gui.DrawString(mapeditor_filedialog_filename, 120, 360, screen);
 			}
 		}
 
@@ -305,20 +275,22 @@ int main(int argc, char** argv) {
 			for (int j = 0; j < 256; j++) { // horizontal
 				for (int i = 0; i < 30; i++) { // vertical
 					int tile = tiles[i*256+j];
-					draw_sprite((tile % 16)*24, (tile / 16)*24, j * 24, i * 24, 24, 24, s_map, screen);
+					ss_map.DrawSprite(tile, j * 24, i * 24, 24, 24, screen);
 				}
 			}
 
 			// Draw the player
 			float target_x = ply_x + (x_vel * (delta_ticks / 30.0f));
 			float target_y = ply_y + (y_vel * (delta_ticks / 30.0f));
-
-			// TODO:Collision detection
+			if (target_x/24 > tiles_w) target_x = 0;
+			if (target_y/24 > tiles_h) target_y = 0;
 
 			ply_x = target_x;
 			ply_y = target_y;
 
-			draw_sprite(0, 0, ply_x * 3, ply_y * 3, 48, 72, s_sprites, screen);
+			y_vel += 0.00; // Gravity
+
+			ss_sprites.DrawSprite(0, 0, ply_x * 3, ply_y * 3, 48, 72, screen);
 
 			// TODO:Draw the enemies
 
@@ -328,9 +300,6 @@ int main(int argc, char** argv) {
 		// Swap the buffers (and update the screen)
 		SDL_Flip(screen);
 	}
-
-	// Free bitmaps
-	SDL_FreeSurface(s_sprites);
 
 	return 0;
 }
